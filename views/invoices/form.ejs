@@ -1,0 +1,148 @@
+<%- include('../layout', { body: `
+<div class="mb-6">
+  <a href="/invoices" class="text-gray-500 hover:text-gray-700">← Back to invoices</a>
+</div>
+
+<div class="bg-white rounded-xl shadow-sm p-8">
+  <h1 class="text-2xl font-bold text-gray-900 mb-6">${invoice ? 'Edit Invoice' : 'New Invoice'}</h1>
+  
+  <form action="${invoice ? '/invoices/' + invoice.id : '/invoices'}" method="POST" id="invoice-form">
+    <div class="grid grid-cols-2 gap-6 mb-8">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Client Name *</label>
+        <input type="text" name="client_name" required value="${invoice?.client_name || ''}"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Client Email</label>
+        <input type="email" name="client_email" value="${invoice?.client_email || ''}"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+      </div>
+      <div class="col-span-2">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Client Address</label>
+        <textarea name="client_address" rows="2"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">${invoice?.client_address || ''}</textarea>
+      </div>
+    </div>
+
+    <div class="mb-8">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-semibold text-gray-900">Items</h2>
+        <button type="button" onclick="addItem()" class="text-primary hover:text-blue-700 font-medium">+ Add Item</button>
+      </div>
+      
+      <div id="items-container" class="space-y-3">
+        <!-- Items will be added here -->
+      </div>
+      <input type="hidden" name="items" id="items-input">
+    </div>
+
+    <div class="grid grid-cols-3 gap-6 mb-8">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Tax Rate (%)</label>
+        <input type="number" name="tax_rate" step="0.01" min="0" max="100" value="${invoice?.tax_rate || '21'}"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+          onchange="calculateTotals()">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
+        <input type="date" name="due_date" value="${invoice?.due_date ? new Date(invoice.due_date).toISOString().split('T')[0] : ''}"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+      </div>
+      ${invoice ? `
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+        <select name="status" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+          <option value="draft" ${invoice.status === 'draft' ? 'selected' : ''}>Draft</option>
+          <option value="sent" ${invoice.status === 'sent' ? 'selected' : ''}>Sent</option>
+          <option value="paid" ${invoice.status === 'paid' ? 'selected' : ''}>Paid</option>
+        </select>
+      </div>
+      ` : '<div></div>'}
+    </div>
+
+    <div class="mb-8">
+      <label class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+      <textarea name="notes" rows="3" placeholder="Payment terms, bank details, etc."
+        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">${invoice?.notes || ''}</textarea>
+    </div>
+
+    <div class="bg-gray-50 -mx-8 -mb-8 px-8 py-6 rounded-b-xl flex justify-between items-center">
+      <div class="text-right">
+        <div class="text-gray-500">Subtotal: €<span id="subtotal">0.00</span></div>
+        <div class="text-gray-500">Tax: €<span id="tax-amount">0.00</span></div>
+        <div class="text-2xl font-bold">Total: €<span id="total">0.00</span></div>
+      </div>
+      <div class="flex gap-3">
+        ${invoice ? `
+        <form action="/invoices/${invoice.id}/delete" method="POST" class="inline" onsubmit="return confirm('Delete this invoice?')">
+          <button type="submit" class="px-4 py-2 text-red-600 hover:text-red-800 font-medium">Delete</button>
+        </form>
+        ` : ''}
+        <button type="submit" class="bg-primary text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition font-medium">
+          ${invoice ? 'Save Changes' : 'Create Invoice'}
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+let items = ${invoice ? JSON.stringify(typeof invoice.items === 'string' ? JSON.parse(invoice.items) : invoice.items) : '[]'};
+
+function renderItems() {
+  const container = document.getElementById('items-container');
+  container.innerHTML = items.map((item, i) => \`
+    <div class="flex gap-3 items-start">
+      <input type="text" placeholder="Description" value="\${item.description}" 
+        onchange="updateItem(\${i}, 'description', this.value)"
+        class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+      <input type="number" placeholder="Qty" value="\${item.qty}" min="0" step="0.01"
+        onchange="updateItem(\${i}, 'qty', this.value)"
+        class="w-24 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+      <input type="number" placeholder="Rate" value="\${item.rate}" min="0" step="0.01"
+        onchange="updateItem(\${i}, 'rate', this.value)"
+        class="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+      <div class="w-32 py-2 text-right font-medium">€\${(parseFloat(item.qty || 0) * parseFloat(item.rate || 0)).toFixed(2)}</div>
+      <button type="button" onclick="removeItem(\${i})" class="p-2 text-red-500 hover:text-red-700">×</button>
+    </div>
+  \`).join('');
+  calculateTotals();
+}
+
+function addItem() {
+  items.push({ description: '', qty: 1, rate: 0 });
+  renderItems();
+}
+
+function updateItem(index, field, value) {
+  items[index][field] = value;
+  renderItems();
+}
+
+function removeItem(index) {
+  items.splice(index, 1);
+  renderItems();
+}
+
+function calculateTotals() {
+  const subtotal = items.reduce((sum, item) => sum + (parseFloat(item.qty || 0) * parseFloat(item.rate || 0)), 0);
+  const taxRate = parseFloat(document.querySelector('[name="tax_rate"]').value || 0);
+  const taxAmount = subtotal * (taxRate / 100);
+  const total = subtotal + taxAmount;
+  
+  document.getElementById('subtotal').textContent = subtotal.toFixed(2);
+  document.getElementById('tax-amount').textContent = taxAmount.toFixed(2);
+  document.getElementById('total').textContent = total.toFixed(2);
+  document.getElementById('items-input').value = JSON.stringify(items);
+}
+
+// Initialize
+if (items.length === 0) addItem();
+else renderItems();
+
+document.getElementById('invoice-form').addEventListener('submit', function() {
+  document.getElementById('items-input').value = JSON.stringify(items);
+});
+</script>
+`, title: invoice ? 'Edit ' + invoice.invoice_number : 'New Invoice', user: user }) %>

@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  invoice:
+    build: .
+    container_name: invoice-app
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://invoice:${POSTGRES_PASSWORD}@invoice-db:5432/invoice
+    depends_on:
+      - invoice-db
+    networks:
+      - n8n-setup_n8n-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.invoice.rule=Host(`invoice.jdms.nl`)"
+      - "traefik.http.routers.invoice.entrypoints=websecure"
+      - "traefik.http.routers.invoice.tls.certresolver=letsencrypt"
+      - "traefik.http.services.invoice.loadbalancer.server.port=3000"
+
+  invoice-db:
+    image: postgres:15-alpine
+    container_name: invoice-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=invoice
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=invoice
+    volumes:
+      - invoice_data:/var/lib/postgresql/data
+    networks:
+      - n8n-setup_n8n-network
+
+networks:
+  n8n-setup_n8n-network:
+    external: true
+
+volumes:
+  invoice_data:
